@@ -277,24 +277,36 @@ export class Agent {
         }
 
         // Add spatial context and goal information
-        const spatialContext = this.memory_bank.summarizeContext();
-        const goalSummary = this.goal_system.getGoalSummary();
+        const spatialContext = this.memory_bank.summarizeContext() || {};
+        const goalSummary = this.goal_system.getGoalSummary() || {};
         
         let contextMessage = 'Current Context:\n';
-        contextMessage += `Position: ${spatialContext.position}\n`;
-        contextMessage += `Biome: ${spatialContext.biome}\n`;
-        contextMessage += `Nearby: ${spatialContext.nearbyBlocks.join(', ')}\n`;
-        if (spatialContext.visibleLandmarks.length > 0) {
-            contextMessage += `Landmarks: ${spatialContext.visibleLandmarks.map(l => l.name).join(', ')}\n`;
+        
+        // Add spatial information with null checks
+        if (spatialContext.position) {
+            contextMessage += `Position: ${spatialContext.position}\n`;
+        }
+        if (spatialContext.biome) {
+            contextMessage += `Biome: ${spatialContext.biome}\n`;
+        }
+        if (Array.isArray(spatialContext.nearbyBlocks) && spatialContext.nearbyBlocks.length > 0) {
+            contextMessage += `Nearby: ${spatialContext.nearbyBlocks.join(', ')}\n`;
+        }
+        if (Array.isArray(spatialContext.visibleLandmarks) && spatialContext.visibleLandmarks.length > 0) {
+            contextMessage += `Landmarks: ${spatialContext.visibleLandmarks.map(l => l.name || 'unnamed').join(', ')}\n`;
         }
         
+        // Add goal information with null checks
         if (goalSummary.mainGoal) {
             contextMessage += '\nGoal Status:\n';
-            contextMessage += `Main Goal: ${goalSummary.mainGoal.description} (${goalSummary.mainGoal.progress}% complete)\n`;
-            if (goalSummary.activeSubGoals.length > 0) {
+            contextMessage += `Main Goal: ${goalSummary.mainGoal.description || 'No description'} (${goalSummary.mainGoal.progress || 0}% complete)\n`;
+            
+            if (Array.isArray(goalSummary.activeSubGoals) && goalSummary.activeSubGoals.length > 0) {
                 contextMessage += 'Active Sub-goals:\n';
                 goalSummary.activeSubGoals.forEach(g => {
-                    contextMessage += `- ${g.description} (${g.progress}% complete)\n`;
+                    if (g && g.description) {
+                        contextMessage += `- ${g.description} (${g.progress || 0}% complete)\n`;
+                    }
                 });
             }
         }

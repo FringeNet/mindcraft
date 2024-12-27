@@ -172,22 +172,37 @@ export class GoalSystem {
     }
 
     getGoalSummary() {
-        return {
-            mainGoal: this.mainGoal ? {
-                description: this.mainGoal.description,
-                progress: this.mainGoal.progress,
-                status: this.mainGoal.status,
-                timeRunning: Date.now() - this.mainGoal.startTime
-            } : null,
-            activeSubGoals: this.getActiveSubGoals().map(g => ({
-                description: g.description,
-                progress: g.progress,
-                status: g.status,
-                attempts: g.attempts
-            })),
-            completedCount: this.completedGoals.length,
-            failedCount: this.failedGoals.length,
-            adaptationCount: this.strategyAdaptations.length
+        const summary = {
+            mainGoal: null,
+            activeSubGoals: [],
+            completedCount: this.completedGoals?.length || 0,
+            failedCount: this.failedGoals?.length || 0,
+            adaptationCount: this.strategyAdaptations?.length || 0
         };
+
+        // Add main goal if it exists and has required properties
+        if (this.mainGoal && typeof this.mainGoal === 'object') {
+            summary.mainGoal = {
+                description: this.mainGoal.description || 'No description',
+                progress: typeof this.mainGoal.progress === 'number' ? this.mainGoal.progress : 0,
+                status: this.mainGoal.status || 'unknown',
+                timeRunning: this.mainGoal.startTime ? Date.now() - this.mainGoal.startTime : 0
+            };
+        }
+
+        // Add active subgoals with validation
+        const activeGoals = this.getActiveSubGoals();
+        if (Array.isArray(activeGoals)) {
+            summary.activeSubGoals = activeGoals
+                .filter(g => g && typeof g === 'object') // Filter out invalid goals
+                .map(g => ({
+                    description: g.description || 'No description',
+                    progress: typeof g.progress === 'number' ? g.progress : 0,
+                    status: g.status || 'unknown',
+                    attempts: typeof g.attempts === 'number' ? g.attempts : 0
+                }));
+        }
+
+        return summary;
     }
 }
