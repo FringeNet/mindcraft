@@ -53,7 +53,7 @@ export class EnhancedMemoryBank {
         }));
     }
 
-    updateSpatialContext(bot) {
+    updateSpatialContext(bot, scanData = null) {
         const position = getPosition(bot);
         const biome = getBiomeName(bot);
         const nearbyBlocks = getNearbyBlockTypes(bot, 8);
@@ -67,9 +67,64 @@ export class EnhancedMemoryBank {
             timestamp: Date.now(),
             visibleLandmarks: this.getVisibleLandmarks(bot)
         };
+
+        // Incorporate rich scan data if available
+        if (scanData) {
+            this.spatialContext = {
+                ...this.spatialContext,
+                environmentScan: scanData.scan,
+                environmentSummary: scanData.summary,
+                accessibleResources: scanData.nearbyResources || [],
+                terrain: scanData.terrain || {},
+                sightlines: scanData.sightlines || {},
+                // Add analysis of the environment
+                analysis: {
+                    nearestResources: this.analyzeNearestResources(scanData.nearbyResources),
+                    clearPaths: this.analyzeClearPaths(scanData.sightlines),
+                    terrainDifficulty: this.analyzeTerrainDifficulty(scanData.terrain)
+                }
+            };
+        }
         
         this.lastUpdate = Date.now();
         return this.spatialContext;
+    }
+
+    analyzeNearestResources(resources = []) {
+        if (!Array.isArray(resources)) return [];
+        
+        return resources
+            .filter(r => r && r.nearest <= 32) // Only consider resources within reasonable range
+            .sort((a, b) => a.nearest - b.nearest)
+            .map(r => ({
+                name: r.name,
+                distance: r.nearest,
+                quantity: r.count,
+                accessible: true
+            }));
+    }
+
+    analyzeClearPaths(sightlines = {}) {
+        if (!sightlines || !sightlines.clearPaths) return [];
+        
+        return sightlines.clearPaths.map(path => ({
+            direction: path.direction,
+            distance: path.distance,
+            hasObstacles: !path.clear
+        }));
+    }
+
+    analyzeTerrainDifficulty(terrain = {}) {
+        if (!terrain || !terrain.elevation) return 'unknown';
+        
+        const elevations = Object.values(terrain.elevation);
+        if (elevations.length === 0) return 'unknown';
+        
+        const maxDiff = Math.max(...elevations) - Math.min(...elevations);
+        
+        if (maxDiff <= 2) return 'easy';
+        if (maxDiff <= 5) return 'moderate';
+        return 'difficult';
     }
 
     getVisibleLandmarks(bot) {

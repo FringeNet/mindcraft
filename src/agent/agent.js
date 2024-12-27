@@ -16,6 +16,7 @@ import { addViewer } from './viewer.js';
 import settings from '../../settings.js';
 import { serverProxy } from './agent_proxy.js';
 import { Task } from './tasks.js';
+import { EnvironmentScanner } from '../utils/perception.js';
 
 export class Agent {
     async start(profile_fp, load_mem=false, init_message=null, count_id=0, task_path=null, task_id=null) {
@@ -44,6 +45,7 @@ export class Agent {
             console.log('Initializing enhanced systems...');
             this.memory_bank = new EnhancedMemoryBank();
             this.goal_system = new GoalSystem();
+            this.scanner = null; // Will be initialized after bot spawn
             console.log('Initializing self prompter...');
             this.self_prompter = new SelfPrompter(this);
             convoManager.initAgent(this);            
@@ -91,12 +93,28 @@ export class Agent {
                     console.log(`${this.name} spawned.`);
                     this.clearBotLogs();
 
-                    // Initialize enhanced navigation after bot spawn
+                    // Initialize enhanced systems after bot spawn
                     this.navigation = new EnhancedNavigation(this.bot, this.memory_bank);
+                    this.scanner = new EnvironmentScanner(this.bot);
 
-                    // Set up periodic spatial context updates
+                    // Set up periodic environment scanning
                     this.spatialUpdateInterval = setInterval(() => {
-                        this.memory_bank.updateSpatialContext(this.bot);
+                        const scan = this.scanner.scan();
+                        const summary = this.scanner.getSummary();
+                        
+                        // Update memory bank with rich environmental data
+                        this.memory_bank.updateSpatialContext(this.bot, {
+                            scan: scan,
+                            summary: summary,
+                            nearbyResources: summary.accessibleResources,
+                            terrain: scan.terrain,
+                            sightlines: scan.sightlines
+                        });
+
+                        // Log detailed environment info for debugging
+                        if (settings.verbose_environment) {
+                            console.log('Environment scan:', JSON.stringify(summary, null, 2));
+                        }
                     }, 5000);
 
                     // Initialize goal system with task if present
@@ -282,15 +300,42 @@ export class Agent {
         
         let contextMessage = 'Current Context:\n';
         
-        // Add spatial information with null checks
+        // Add enhanced spatial information
         if (spatialContext.position) {
             contextMessage += `Position: ${spatialContext.position}\n`;
         }
         if (spatialContext.biome) {
             contextMessage += `Biome: ${spatialContext.biome}\n`;
         }
+
+        // Add accessible resources information
+        if (Array.isArray(spatialContext.accessibleResources) && spatialContext.accessibleResources.length > 0) {
+            contextMessage += '\nAccessible Resources:\n';
+            spatialContext.accessibleResources
+                .slice(0, 5) // Show 5 nearest resources
+                .forEach(r => {
+                    contextMessage += `- ${r.name} (${r.count} blocks, ${Math.round(r.nearest)}m away)\n`;
+                });
+        }
+
+        // Add terrain analysis
+        if (spatialContext.analysis) {
+            contextMessage += `\nTerrain: ${spatialContext.analysis.terrainDifficulty} difficulty\n`;
+            
+            // Add clear paths information
+            const clearPaths = spatialContext.analysis.clearPaths;
+            if (Array.isArray(clearPaths) && clearPaths.length > 0) {
+                const directions = clearPaths
+                    .filter(p => !p.hasObstacles)
+                    .map(p => `${p.direction[0]},${p.direction[1]}`)
+                    .join(', ');
+                contextMessage += `Clear paths: ${directions}\n`;
+            }
+        }
+
+        // Add nearby blocks and landmarks
         if (Array.isArray(spatialContext.nearbyBlocks) && spatialContext.nearbyBlocks.length > 0) {
-            contextMessage += `Nearby: ${spatialContext.nearbyBlocks.join(', ')}\n`;
+            contextMessage += `\nNearby blocks: ${spatialContext.nearbyBlocks.join(', ')}\n`;
         }
         if (Array.isArray(spatialContext.visibleLandmarks) && spatialContext.visibleLandmarks.length > 0) {
             contextMessage += `Landmarks: ${spatialContext.visibleLandmarks.map(l => l.name || 'unnamed').join(', ')}\n`;
