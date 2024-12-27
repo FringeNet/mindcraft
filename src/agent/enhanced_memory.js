@@ -136,17 +136,25 @@ export class EnhancedMemoryBank {
 
     summarizeContext() {
         if (!this.spatialContext || !this.lastUpdate) {
-            return "No spatial context available";
+            return {
+                position: null,
+                biome: null,
+                nearbyBlocks: [],
+                visibleLandmarks: [],
+                contextAge: 'No context available'
+            };
         }
 
         const timeSinceUpdate = (Date.now() - this.lastUpdate) / 1000;
         const pos = this.spatialContext.position;
         
         return {
-            position: `(${Math.floor(pos.x)}, ${Math.floor(pos.y)}, ${Math.floor(pos.z)})`,
-            biome: this.spatialContext.biome,
-            nearbyBlocks: this.spatialContext.nearbyBlocks.slice(0, 5), // Top 5 most common
-            visibleLandmarks: this.spatialContext.visibleLandmarks.slice(0, 3), // 3 closest landmarks
+            position: pos ? `(${Math.floor(pos.x)}, ${Math.floor(pos.y)}, ${Math.floor(pos.z)})` : null,
+            biome: this.spatialContext.biome || null,
+            nearbyBlocks: Array.isArray(this.spatialContext.nearbyBlocks) ? 
+                this.spatialContext.nearbyBlocks.slice(0, 5) : [], // Top 5 most common
+            visibleLandmarks: Array.isArray(this.spatialContext.visibleLandmarks) ? 
+                this.spatialContext.visibleLandmarks.slice(0, 3) : [], // 3 closest landmarks
             contextAge: `${Math.floor(timeSinceUpdate)}s ago`
         };
     }
