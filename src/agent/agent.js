@@ -6,7 +6,9 @@ import { initBot } from '../utils/mcdata.js';
 import { containsCommand, commandExists, executeCommand, truncCommandMessage, isAction } from './commands/index.js';
 import { ActionManager } from './action_manager.js';
 import { NPCContoller } from './npc/controller.js';
-import { MemoryBank } from './memory_bank.js';
+import { EnhancedMemoryBank } from './enhanced_memory.js';
+import { GoalSystem } from './goal_system.js';
+import { EnhancedNavigation } from './enhanced_navigation.js';
 import { SelfPrompter } from './self_prompter.js';
 import convoManager from './conversation.js';
 import { handleTranslation, handleEnglishTranslation } from '../utils/translator.js';
@@ -19,6 +21,7 @@ export class Agent {
     async start(profile_fp, load_mem=false, init_message=null, count_id=0, task_path=null, task_id=null) {
         this.last_sender = null;
         this.count_id = count_id;
+        this.spatialUpdateInterval = null;
         try {
             if (!profile_fp) {
                 throw new Error('No profile filepath provided');
@@ -38,8 +41,9 @@ export class Agent {
             this.coder = new Coder(this);
             console.log('Initializing npc controller...');
             this.npc = new NPCContoller(this);
-            console.log('Initializing memory bank...');
-            this.memory_bank = new MemoryBank();
+            console.log('Initializing enhanced systems...');
+            this.memory_bank = new EnhancedMemoryBank();
+            this.goal_system = new GoalSystem();
             console.log('Initializing self prompter...');
             this.self_prompter = new SelfPrompter(this);
             convoManager.initAgent(this);            
@@ -86,6 +90,22 @@ export class Agent {
                     
                     console.log(`${this.name} spawned.`);
                     this.clearBotLogs();
+
+                    // Initialize enhanced navigation after bot spawn
+                    this.navigation = new EnhancedNavigation(this.bot, this.memory_bank);
+
+                    // Set up periodic spatial context updates
+                    this.spatialUpdateInterval = setInterval(() => {
+                        this.memory_bank.updateSpatialContext(this.bot);
+                    }, 5000);
+
+                    // Initialize goal system with task if present
+                    if (this.task.data?.goal) {
+                        this.goal_system.setMainGoal(this.task.data.goal, {
+                            taskType: this.task.data.type,
+                            initialInventory: this.task.data.initial_inventory
+                        });
+                    }
 
                     this._setupEventHandlers(save_data, init_message);
                     this.startEvents();
@@ -193,6 +213,11 @@ export class Agent {
             this.self_prompter.stop(false);
         }
         convoManager.endAllConversations();
+        
+        // Clean up enhanced systems
+        if (this.spatialUpdateInterval) {
+            clearInterval(this.spatialUpdateInterval);
+        }
     }
 
     async handleMessage(source, message, max_responses=null) {
@@ -250,6 +275,31 @@ export class Agent {
             behavior_log = 'Recent behaviors log: \n' + behavior_log.substring(behavior_log.indexOf('\n'));
             await this.history.add('system', behavior_log);
         }
+
+        // Add spatial context and goal information
+        const spatialContext = this.memory_bank.summarizeContext();
+        const goalSummary = this.goal_system.getGoalSummary();
+        
+        let contextMessage = 'Current Context:\n';
+        contextMessage += `Position: ${spatialContext.position}\n`;
+        contextMessage += `Biome: ${spatialContext.biome}\n`;
+        contextMessage += `Nearby: ${spatialContext.nearbyBlocks.join(', ')}\n`;
+        if (spatialContext.visibleLandmarks.length > 0) {
+            contextMessage += `Landmarks: ${spatialContext.visibleLandmarks.map(l => l.name).join(', ')}\n`;
+        }
+        
+        if (goalSummary.mainGoal) {
+            contextMessage += '\nGoal Status:\n';
+            contextMessage += `Main Goal: ${goalSummary.mainGoal.description} (${goalSummary.mainGoal.progress}% complete)\n`;
+            if (goalSummary.activeSubGoals.length > 0) {
+                contextMessage += 'Active Sub-goals:\n';
+                goalSummary.activeSubGoals.forEach(g => {
+                    contextMessage += `- ${g.description} (${g.progress}% complete)\n`;
+                });
+            }
+        }
+        
+        await this.history.add('system', contextMessage);
 
         // Handle other user messages
         await this.history.add(source, message);
